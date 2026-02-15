@@ -6,18 +6,18 @@
 
 ## Chunk 1: Scaffold + UI + State System
 
-- [ ] Next.js project setup (App Router + Tailwind CSS)
-- [ ] Project folder structure
-- [ ] TypeScript types (WorldState, Entity, Action, Rule, etc.)
-- [ ] World state store (in-memory state + action queue)
+- [x] Next.js project setup (App Router + Tailwind CSS) ✅ tested
+- [x] Project folder structure ✅ tested
+- [x] TypeScript types (WorldState, Entity, Action, Rule, etc.) ✅ tested
+- [x] World state store (Redis via Upstash) ✅ tested
 - [ ] Rule executor (hard rules block, soft rules penalize)
-- [ ] LLM provider abstraction (OpenAI / Anthropic swap via env)
-- [ ] API route stubs (god-mode, agent-action)
-- [ ] Grid component (renders entities from state, dark theme)
-- [ ] Chat panel component (input + message history)
-- [ ] Layout (grid ~70% left, chat ~30% right)
-- [ ] Controls (Start / Stop agents)
-- [ ] Verify: grid renders sample entities, chat UI works
+- [x] LLM provider abstraction (OpenAI / Anthropic swap via env) ✅ tested
+- [x] API route stubs (god-mode, agent-action, simulation) ✅ tested
+- [x] Grid component (renders entities from state, dark theme) ✅ tested
+- [x] Chat panel component (input + message history) ✅ tested
+- [x] Layout (grid ~70% left, chat ~30% right) ✅ tested
+- [x] Controls (Start / Stop / Reset agents) ✅ tested
+- [x] Verify: grid renders entities, chat UI works ✅ tested
 
 **Goal**: Visual app with grid + chat. Nothing "thinks" yet.
 
@@ -25,15 +25,15 @@
 
 ## Chunk 2: Brains Come Alive
 
-- [ ] God Mode API: chat → Opus/GPT-4o → structured state mutations
-- [ ] God Mode system prompt (open-ended, diverse defaults, explain actions)
-- [ ] Wire chat panel → God Mode API → state updates → grid re-render
-- [ ] Agent brain API: state + memory + rules → Haiku/GPT-4o-mini → action
-- [ ] Agent async loop (independent, self-paced, thinking state)
-- [ ] Agent memory (per-agent, accumulates observations)
+- [x] God Mode API: chat → GPT-4o → structured state mutations ✅ tested
+- [x] God Mode system prompt (open-ended, diverse defaults, explain actions) ✅ tested
+- [x] Wire chat panel → God Mode API → state updates → grid re-render ✅ tested
+- [x] Agent brain API: state + memory + rules → GPT-4o-mini → action ✅ tested
+- [x] Agent async loop (independent, self-paced, thinking state) ✅ tested
+- [x] Agent memory (per-agent, accumulates observations) ✅ tested
 - [ ] Action queue processing (FIFO, first-come-first-served)
 - [ ] Wire agent loops → action queue → rule executor → state → render
-- [ ] Verify: God Mode commands change world, agents act independently
+- [x] Verify: God Mode commands change world, agents act independently ✅ tested
 
 **Goal**: Full working MVP. Type commands, world changes, agents act.
 
@@ -41,11 +41,11 @@
 
 ## Chunk 3: Polish + Demo Prep
 
-- [ ] Visual polish (thinking glow/pulse, smooth entity transitions)
-- [ ] Dark theme refinement (clean, intentional look)
-- [ ] Agent status indicators on grid (thinking/idle/acting)
-- [ ] Chat UX (auto-scroll, loading state for God Mode, clear formatting)
-- [ ] Sample prompts on empty canvas for first-time users
+- [x] Visual polish (thinking glow/pulse) ✅ tested
+- [x] Dark theme refinement (clean, intentional look) ✅ tested
+- [x] Agent status indicators on grid (thinking/idle) ✅ tested
+- [x] Chat UX (auto-scroll, loading state for God Mode) ✅ tested
+- [x] Sample prompts on empty canvas for first-time users ✅ tested
 - [ ] Pre-seed demo scenario (scripted sequence for judges)
 - [ ] Rehearse demo flow (time it, aim for ~4 minutes)
 - [ ] Bug fixes + edge case handling
