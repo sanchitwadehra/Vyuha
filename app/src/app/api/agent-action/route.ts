@@ -199,6 +199,11 @@ export async function POST(req: NextRequest) {
           await updateEntity(target.id, result.targetUpdates);
         }
 
+        // Consume resources/items after use
+        if (target.type === "resource" || target.type === "object" || target.type === "item") {
+          await removeEntity(target.id);
+        }
+
         await addLogEntry({ agentId, message: result.logMessage, type: "action" });
         break;
       }
