@@ -1,5 +1,9 @@
 # Project Guidelines
 
+## Scope
+
+- Always read `docs/scope.md` before starting any task to understand the current project scope and requirements
+
 ## Git Commit Conventions
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) format: `type(scope): description`
