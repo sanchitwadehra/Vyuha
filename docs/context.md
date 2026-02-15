@@ -31,3 +31,11 @@ The long-term philosophical thesis: English ambiguity is a root cause of LLM hal
 - **Networking targets**: Irina Ghose (MD, Anthropic), Hemant Mohapatra (Lightspeed)
 - **Approach**: Build with Anthropic's tools, flex WebMCP knowledge in conversations, pitch Sanskrit/Panini as the long-term differentiator
 - **Demo flow**: Run simulation → introduce complex verbal rules via chat → show agents failing due to English ambiguity → close with the Panini thesis
+
+## Schedule
+
+See [`schedule.md`](./schedule.md) for the full hackathon timeline.
+
+- **Coding window**: 10:00 AM – 5:00 PM (~7 hours, solo)
+- **Submission**: 5:00 PM sharp
+- **Judging**: 6:00 PM | **Winners**: 8:00 PM | **Networking**: 9:00 PM
