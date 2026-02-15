@@ -16,7 +16,7 @@ Natural language-controlled multi-agent sandbox. Describe worlds in English, wat
 ```
 God Mode (GPT-4o) → state mutations → Upstash Redis
                                           ↓
-Agent loops (GPT-4o) → read state → think → act → write state
+Agent loops (GPT-4o) → read state → think → act → write state to JSON
                                           ↓
 Next.js frontend ← poll state → render grid
 ```
