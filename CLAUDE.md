@@ -8,6 +8,7 @@
 
 - `/Users/sanchit/Documents/Context` — extra context files for building discussions
 - `/Users/sanchit/Documents/screenshots` — screenshots for reference
+- `docs/context.md` contains a ready summary — only read the external files above if you need deeper detail
 
 ## Git Commit Conventions
 
