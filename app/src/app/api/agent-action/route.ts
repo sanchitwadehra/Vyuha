@@ -7,23 +7,24 @@ import {
   updateEntity,
   addLogEntry,
 } from "@/lib/world-state";
+import { Entity } from "@/lib/types";
 
-function buildAgentPrompt(agent: ReturnType<typeof getEntityById>, state: ReturnType<typeof getWorldState>, nearby: ReturnType<typeof getNearbyEntities>): string {
-  return `You are "${agent!.name}" — an agent living in a 2D grid world called Vyuha.
+function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWorldState>>, nearby: Entity[]): string {
+  return `You are "${agent.name}" — an agent living in a 2D grid world called Vyuha.
 
 ## Your Identity
-- Name: ${agent!.name}
-- Position: (${agent!.position.x}, ${agent!.position.y})
-- Your Rules: ${agent!.rules || "No specific rules"}
-- Your Properties: ${JSON.stringify(agent!.properties)}
-- Your Status: ${agent!.status}
+- Name: ${agent.name}
+- Position: (${agent.position.x}, ${agent.position.y})
+- Your Rules: ${agent.rules || "No specific rules"}
+- Your Properties: ${JSON.stringify(agent.properties)}
+- Your Status: ${agent.status}
 
 ## Your Memory (recent events you remember)
-${(agent!.memory || []).slice(-10).join("\n") || "No memories yet."}
+${(agent.memory || []).slice(-10).join("\n") || "No memories yet."}
 
 ## World Info
 - Grid: ${state.grid.width}x${state.grid.height} (valid coordinates: x from 0 to ${state.grid.width - 1}, y from 0 to ${state.grid.height - 1})
-- Your position boundaries: you can move left to x=${Math.max(0, agent!.position.x - 1)}, right to x=${Math.min(state.grid.width - 1, agent!.position.x + 1)}, up to y=${Math.max(0, agent!.position.y - 1)}, down to y=${Math.min(state.grid.height - 1, agent!.position.y + 1)}
+- Your position boundaries: you can move left to x=${Math.max(0, agent.position.x - 1)}, right to x=${Math.min(state.grid.width - 1, agent.position.x + 1)}, up to y=${Math.max(0, agent.position.y - 1)}, down to y=${Math.min(state.grid.height - 1, agent.position.y + 1)}
 - Global Rules: ${state.globalRules.join("; ") || "None"}
 - Environment: ${JSON.stringify(state.environment)}
 
@@ -50,17 +51,17 @@ export async function POST(req: NextRequest) {
   try {
     const { agentId } = await req.json();
 
-    const state = getWorldState();
-    const agent = getEntityById(agentId);
+    const state = await getWorldState();
+    const agent = await getEntityById(agentId);
 
     if (!agent || agent.type !== "agent") {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
     // Mark as thinking
-    updateEntity(agentId, { status: "thinking" });
+    await updateEntity(agentId, { status: "thinking" });
 
-    const nearby = getNearbyEntities(agent.position, 5);
+    const nearby = await getNearbyEntities(agent.position, 5);
     const prompt = buildAgentPrompt(agent, state, nearby);
 
     const raw = await callAgentBrain(
@@ -73,12 +74,12 @@ export async function POST(req: NextRequest) {
       const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       decision = JSON.parse(cleaned);
     } catch {
-      updateEntity(agentId, { status: "idle" });
+      await updateEntity(agentId, { status: "idle" });
       return NextResponse.json({ error: "Failed to parse agent response", raw }, { status: 500 });
     }
 
-    // Apply the action
-    const currentAgent = getEntityById(agentId);
+    // Re-fetch agent to get latest state
+    const currentAgent = await getEntityById(agentId);
     if (!currentAgent) {
       return NextResponse.json({ error: "Agent was removed during thinking" }, { status: 404 });
     }
@@ -92,12 +93,12 @@ export async function POST(req: NextRequest) {
         const dy = Number(decision.data.dy) || 0;
         const newX = Math.max(0, Math.min(state.grid.width - 1, currentAgent.position.x + dx));
         const newY = Math.max(0, Math.min(state.grid.height - 1, currentAgent.position.y + dy));
-        updateEntity(agentId, {
+        await updateEntity(agentId, {
           position: { x: newX, y: newY },
           status: "idle",
           memory: newMemory,
         });
-        addLogEntry({
+        await addLogEntry({
           agentId,
           message: `${currentAgent.name} moved to (${newX},${newY})`,
           type: "action",
@@ -107,8 +108,8 @@ export async function POST(req: NextRequest) {
       case "interact": {
         const targetId = decision.data.targetId as string;
         const interaction = decision.data.interaction as string;
-        updateEntity(agentId, { status: "idle", memory: newMemory });
-        addLogEntry({
+        await updateEntity(agentId, { status: "idle", memory: newMemory });
+        await addLogEntry({
           agentId,
           message: `${currentAgent.name} → ${interaction} with ${targetId}`,
           type: "action",
@@ -117,8 +118,8 @@ export async function POST(req: NextRequest) {
       }
       case "speak": {
         const msg = decision.data.message as string;
-        updateEntity(agentId, { status: "idle", memory: newMemory });
-        addLogEntry({
+        await updateEntity(agentId, { status: "idle", memory: newMemory });
+        await addLogEntry({
           agentId,
           message: `${currentAgent.name} says: "${msg}"`,
           type: "action",
@@ -127,8 +128,8 @@ export async function POST(req: NextRequest) {
       }
       default: {
         // wait or unknown
-        updateEntity(agentId, { status: "idle", memory: newMemory });
-        addLogEntry({
+        await updateEntity(agentId, { status: "idle", memory: newMemory });
+        await addLogEntry({
           agentId,
           message: `${currentAgent.name} waits`,
           type: "action",
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
       agentId,
       decision,
       delay,
-      state: getWorldState(),
+      state: await getWorldState(),
     });
   } catch (error) {
     console.error("Agent action error:", error);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Grid from "@/components/Grid";
 import ChatPanel from "@/components/ChatPanel";
 import Controls from "@/components/Controls";
@@ -24,28 +24,14 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isGodModeLoading, setIsGodModeLoading] = useState(false);
   const agentLoopsRef = useRef<Map<string, boolean>>(new Map());
-  // Track state version to prevent stale updates
-  const stateVersionRef = useRef(0);
 
-  // Only update state if the version is newer
-  const updateState = useCallback((newState: WorldState, version?: number) => {
-    const v = version ?? Date.now();
-    if (v >= stateVersionRef.current) {
-      stateVersionRef.current = v;
-      setWorldState(newState);
-    }
+  // On mount, fetch current state from Redis
+  useEffect(() => {
+    fetch("/api/simulation")
+      .then((res) => res.json())
+      .then((data) => setWorldState(data.state))
+      .catch(() => {});
   }, []);
-
-  // On mount, reset server state to ensure clean start
-  const hasSynced = useRef(false);
-  if (!hasSynced.current) {
-    hasSynced.current = true;
-    fetch("/api/simulation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "reset" }),
-    }).catch(() => {});
-  }
 
   // God Mode: send chat message
   const handleSendMessage = useCallback(async (message: string) => {
@@ -83,7 +69,6 @@ export default function Home() {
           timestamp: new Date().toISOString(),
         };
         setChatMessages((prev) => [...prev, assistantMsg]);
-        stateVersionRef.current = Date.now();
         setWorldState(data.state);
       }
     } catch (err) {
@@ -115,8 +100,6 @@ export default function Home() {
           break;
         }
 
-        // Agent actions always have the latest state
-        stateVersionRef.current = Date.now();
         setWorldState(data.state);
 
         // Respect agent's delay
@@ -142,7 +125,6 @@ export default function Home() {
       body: JSON.stringify({ action: "start" }),
     });
     const data = await res.json();
-    stateVersionRef.current = Date.now();
     setWorldState(data.state);
 
     // Start independent loops for each agent
@@ -167,7 +149,6 @@ export default function Home() {
       body: JSON.stringify({ action: "stop" }),
     });
     const data = await res.json();
-    stateVersionRef.current = Date.now();
     setWorldState(data.state);
   }, []);
 
@@ -184,7 +165,6 @@ export default function Home() {
       body: JSON.stringify({ action: "reset" }),
     });
     const data = await res.json();
-    stateVersionRef.current = Date.now();
     setWorldState(data.state);
     setChatMessages([]);
   }, []);

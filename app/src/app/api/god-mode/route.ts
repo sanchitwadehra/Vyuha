@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    const state = getWorldState();
+    const state = await getWorldState();
     const systemPrompt = buildGodModePrompt(state);
 
     const raw = await callGodMode(systemPrompt, message);
@@ -30,9 +30,9 @@ export async function POST(req: NextRequest) {
 
     // Ensure mutations is an array
     const mutations = Array.isArray(response.mutations) ? response.mutations : [];
-    applyMutations(mutations);
+    await applyMutations(mutations);
 
-    addLogEntry({
+    await addLogEntry({
       message: `God Mode: ${message} → ${response.message}`,
       type: "god-mode",
     });
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: response.message,
       mutations: response.mutations,
-      state: getWorldState(),
+      state: await getWorldState(),
     });
   } catch (error) {
     console.error("God Mode error:", error);

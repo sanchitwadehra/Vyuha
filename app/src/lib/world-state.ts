@@ -1,11 +1,12 @@
-import { WorldState, AgentAction, StateMutation, LogEntry, Entity } from "./types";
+import { Redis } from "@upstash/redis";
+import { WorldState, StateMutation, LogEntry, Entity } from "./types";
 
-// Survive Next.js HMR in development — state persists across hot reloads
-const globalStore = globalThis as unknown as {
-  __vyuha_state?: WorldState;
-  __vyuha_version?: number;
-  __vyuha_queue?: AgentAction[];
-};
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+const STATE_KEY = "vyuha:state";
 
 const initialState: WorldState = {
   grid: { width: 20, height: 20 },
@@ -22,76 +23,67 @@ const initialState: WorldState = {
   running: false,
 };
 
-let worldState: WorldState = globalStore.__vyuha_state || { ...initialState };
-const actionQueue: AgentAction[] = globalStore.__vyuha_queue || [];
-let stateVersion = globalStore.__vyuha_version || 0;
-
-function persist() {
-  globalStore.__vyuha_state = worldState;
-  globalStore.__vyuha_version = stateVersion;
-  globalStore.__vyuha_queue = actionQueue;
+export async function getWorldState(): Promise<WorldState> {
+  const state = await redis.get<WorldState>(STATE_KEY);
+  return state || { ...initialState };
 }
 
-export function getWorldState(): WorldState {
-  return worldState;
+async function saveState(state: WorldState): Promise<void> {
+  await redis.set(STATE_KEY, state);
 }
 
-export function getStateVersion(): number {
-  return stateVersion;
-}
-
-export function resetWorldState(): void {
-  worldState = {
+export async function resetWorldState(): Promise<void> {
+  const state: WorldState = {
     ...initialState,
     time: { started: new Date().toISOString(), elapsed: 0 },
     log: [],
     entities: [],
   };
-  stateVersion++;
-  persist();
+  await saveState(state);
 }
 
-export function setRunning(running: boolean): void {
-  worldState = { ...worldState, running };
-  stateVersion++;
-  persist();
+export async function setRunning(running: boolean): Promise<void> {
+  const state = await getWorldState();
+  await saveState({ ...state, running });
 }
 
-export function applyMutations(mutations: StateMutation[]): void {
+export async function applyMutations(mutations: StateMutation[]): Promise<void> {
   if (!Array.isArray(mutations)) {
     console.warn("[applyMutations] mutations is not an array:", mutations);
     return;
   }
+
+  let state = await getWorldState();
+
   for (const mutation of mutations) {
     switch (mutation.type) {
       case "add_entity": {
         const entity = mutation.payload as unknown as Entity;
-        // Ensure defaults for agent entities
         if (entity.type === "agent") {
           entity.status = entity.status || "idle";
           entity.memory = entity.memory || [];
           entity.delay = entity.delay ?? 0;
         }
         entity.properties = entity.properties || {};
-        worldState = {
-          ...worldState,
-          entities: [...worldState.entities, entity],
+        state = {
+          ...state,
+          entities: [...state.entities, entity],
         };
         break;
       }
       case "remove_entity": {
         const id = mutation.payload.id as string;
-        worldState = {
-          ...worldState,
-          entities: worldState.entities.filter((e) => e.id !== id),
+        state = {
+          ...state,
+          entities: state.entities.filter((e) => e.id !== id),
         };
         break;
       }
       case "modify_entity": {
         const { id: modId, ...changes } = mutation.payload as { id: string; [key: string]: unknown };
-        worldState = {
-          ...worldState,
-          entities: worldState.entities.map((e) =>
+        state = {
+          ...state,
+          entities: state.entities.map((e) =>
             e.id === modId ? { ...e, ...changes } : e
           ),
         };
@@ -99,75 +91,78 @@ export function applyMutations(mutations: StateMutation[]): void {
       }
       case "add_global_rule": {
         const rule = mutation.payload.rule as string;
-        worldState = {
-          ...worldState,
-          globalRules: [...worldState.globalRules, rule],
+        state = {
+          ...state,
+          globalRules: [...state.globalRules, rule],
         };
         break;
       }
       case "remove_global_rule": {
         const ruleText = mutation.payload.rule as string;
-        worldState = {
-          ...worldState,
-          globalRules: worldState.globalRules.filter((r) => r !== ruleText),
+        state = {
+          ...state,
+          globalRules: state.globalRules.filter((r) => r !== ruleText),
         };
         break;
       }
       case "modify_grid": {
-        worldState = {
-          ...worldState,
-          grid: { ...worldState.grid, ...(mutation.payload as { width?: number; height?: number }) },
+        state = {
+          ...state,
+          grid: { ...state.grid, ...(mutation.payload as { width?: number; height?: number }) },
         };
         break;
       }
       case "modify_environment": {
-        worldState = {
-          ...worldState,
-          environment: { ...worldState.environment, ...(mutation.payload as Record<string, unknown>) },
+        state = {
+          ...state,
+          environment: { ...state.environment, ...(mutation.payload as Record<string, unknown>) },
         };
         break;
       }
     }
   }
-  stateVersion++;
-  persist();
+
+  await saveState(state);
 }
 
-export function updateEntity(id: string, updates: Partial<Entity>): void {
-  worldState = {
-    ...worldState,
-    entities: worldState.entities.map((e) =>
+export async function updateEntity(id: string, updates: Partial<Entity>): Promise<void> {
+  const state = await getWorldState();
+  const newState = {
+    ...state,
+    entities: state.entities.map((e) =>
       e.id === id ? { ...e, ...updates } : e
     ),
   };
-  stateVersion++;
-  persist();
+  await saveState(newState);
 }
 
-export function addLogEntry(entry: Omit<LogEntry, "timestamp">): void {
+export async function addLogEntry(entry: Omit<LogEntry, "timestamp">): Promise<void> {
+  const state = await getWorldState();
   const logEntry: LogEntry = {
     ...entry,
     timestamp: new Date().toISOString(),
   };
-  worldState = {
-    ...worldState,
-    log: [...worldState.log.slice(-99), logEntry],
-    actionCount: worldState.actionCount + 1,
+  const newState = {
+    ...state,
+    log: [...state.log.slice(-99), logEntry],
+    actionCount: state.actionCount + 1,
   };
-  stateVersion++;
-  persist();
+  await saveState(newState);
 }
 
-export function getEntityById(id: string): Entity | undefined {
-  return worldState.entities.find((e) => e.id === id);
+export async function getEntityById(id: string): Promise<Entity | undefined> {
+  const state = await getWorldState();
+  return state.entities.find((e) => e.id === id);
 }
 
-export function getAgents(): Entity[] {
-  return worldState.entities.filter((e) => e.type === "agent");
+export async function getAgents(): Promise<Entity[]> {
+  const state = await getWorldState();
+  return state.entities.filter((e) => e.type === "agent");
 }
 
-export function getNearbyEntities(position: { x: number; y: number }, radius: number): Entity[] {
-  return worldState.entities.filter((e) => {
+export async function getNearbyEntities(position: { x: number; y: number }, radius: number): Promise<Entity[]> {
+  const state = await getWorldState();
+  return state.entities.filter((e) => {
     const dx = Math.abs(e.position.x - position.x);
     const dy = Math.abs(e.position.y - position.y);
     return dx <= radius && dy <= radius && (dx > 0 || dy > 0);

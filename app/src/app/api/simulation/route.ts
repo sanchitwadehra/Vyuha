@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWorldState, setRunning, getStateVersion, resetWorldState } from "@/lib/world-state";
+import { getWorldState, setRunning, resetWorldState } from "@/lib/world-state";
 
 export async function GET() {
   return NextResponse.json({
-    state: getWorldState(),
-    version: getStateVersion(),
+    state: await getWorldState(),
   });
 }
 
@@ -13,14 +12,14 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case "start":
-      setRunning(true);
-      return NextResponse.json({ state: getWorldState(), message: "Simulation started" });
+      await setRunning(true);
+      return NextResponse.json({ state: await getWorldState(), message: "Simulation started" });
     case "stop":
-      setRunning(false);
-      return NextResponse.json({ state: getWorldState(), message: "Simulation stopped" });
+      await setRunning(false);
+      return NextResponse.json({ state: await getWorldState(), message: "Simulation stopped" });
     case "reset":
-      resetWorldState();
-      return NextResponse.json({ state: getWorldState(), message: "World reset" });
+      await resetWorldState();
+      return NextResponse.json({ state: await getWorldState(), message: "World reset" });
     default:
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
