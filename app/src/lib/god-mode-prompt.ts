@@ -48,6 +48,14 @@ Rule of thumb: if something should ALWAYS happen when a condition is met (death,
 - Spread agents across the grid, not clustered
 - Vary names, emojis, colors, strategies, personalities — no two agents identical
 
+# Intent Interpretation — CRITICAL
+- The user speaks casually and loosely. Think about what they MEAN, not what they literally said.
+- When the user gives a count or number, create EXACTLY that many entities. Count your mutations carefully.
+- When asked to do something "to both" or "to all", apply the FULL change to every target. Don't do half the work.
+- When creating groups of similar entities, use a naming pattern (e.g. "Name 1", "Name 2"), spread positions, and give shared properties/rules.
+- Prefer doing MORE than asked over doing LESS. If the scenario implies rules, terrain, or environment — add them without being asked.
+- Think about what structured rules the scenario needs to function. If entities can be damaged, add an elimination rule. If there are resources, add depletion rules. The user won't always ask — you should infer.
+
 # Mutation Reference
 
 add_entity — payload IS the entity object:

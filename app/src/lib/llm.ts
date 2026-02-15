@@ -23,8 +23,8 @@ export async function callGodMode(
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      temperature: 0.7,
-      max_tokens: 4096,
+      temperature: 0.4,
+      max_tokens: 8192,
     });
     return response.choices[0].message.content || "";
   }
@@ -40,7 +40,7 @@ export async function callAgentBrain(
   if (provider === "openai") {
     const client = getOpenAI();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },

@@ -15,6 +15,7 @@ function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWor
   const terrainTypes = ["obstacle", "zone", "terrain", "wall", "island"];
   const allOthers = state.entities.filter((e) => e.id !== agent.id);
   const targets = allOthers.filter((e) => !terrainTypes.includes(e.type));
+  const otherAgents = allOthers.filter((e) => e.type === "agent");
 
   // Pre-compute directions to interactable entities (agents + resources)
   const targetList = targets.map((e) => {
@@ -22,55 +23,41 @@ function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWor
     const dy = e.position.y - agent.position.y;
     const dist = Math.abs(dx) + Math.abs(dy);
     const canInteract = Math.abs(dx) <= 2 && Math.abs(dy) <= 2;
-    return `- ${e.name || e.id} (${e.type}) at (${e.position.x},${e.position.y}) ${e.emoji} | distance: ${dist} | move dx=${dx > 0 ? "+" : ""}${dx}, dy=${dy > 0 ? "+" : ""}${dy} to reach${canInteract ? " | ✅ IN RANGE" : ""} | properties:${JSON.stringify(e.properties)}`;
+    return `- ${e.name || e.id} (${e.type}) at (${e.position.x},${e.position.y}) ${e.emoji} | distance: ${dist} | dx=${dx > 0 ? "+" : ""}${dx}, dy=${dy > 0 ? "+" : ""}${dy}${canInteract ? " | ✅ IN RANGE — can interact" : ` | ❌ TOO FAR — move first`} | properties:${JSON.stringify(e.properties)}`;
   }).join("\n");
 
-  return `You are "${agent.name}" — an agent living in a 2D grid world called Vyuha.
+  // Show occupied cells so agents can avoid them
+  const occupiedCells = otherAgents.map((e) => `(${e.position.x},${e.position.y})`).join(", ");
 
-## Your Identity
-- Name: ${agent.name}
-- Position: (${agent.position.x}, ${agent.position.y})
-- Your Rules: ${agent.rules || "No specific rules"}
-- Your Properties: ${JSON.stringify(agent.properties)}
-- Mobility: ${mobility} cells per move
+  return `You are "${agent.name}" — an agent in a 2D grid world.
 
-## Your Memory (recent events you remember)
-${(agent.memory || []).slice(-10).join("\n") || "No memories yet."}
+## You
+Position: (${agent.position.x}, ${agent.position.y}) | Mobility: ${mobility} | Rules: ${agent.rules || "None"}
+Properties: ${JSON.stringify(agent.properties)}
 
-## World Info
-- Grid: ${state.grid.width}x${state.grid.height}
-- Global Rules: ${state.globalRules.join("; ") || "None"}
-- Environment: ${JSON.stringify(state.environment)}
+## Memory
+${(agent.memory || []).slice(-8).join("\n") || "No memories yet."}
 
-## Agents & Resources (you can interact with these)
-${targetList || "Nothing to interact with."}
+## World
+Grid: ${state.grid.width}x${state.grid.height} | Rules: ${state.globalRules.join("; ") || "None"}
 
-## Terrain (not interactable, just landscape)
-${allOthers.filter((e) => terrainTypes.includes(e.type)).length} terrain tiles on the grid.
+## Entities (you can interact with these)
+${targetList || "Nothing nearby."}
 
-## What You Can Do
-Respond with ONLY valid JSON — no markdown, no code fences:
-{
-  "action": "move" | "interact" | "wait" | "speak",
-  "data": {
-    // for "move": { "dx": -${mobility} to ${mobility}, "dy": -${mobility} to ${mobility} } — USE LARGE VALUES to cover distance fast!
-    // for "interact": { "targetId": "entity-id-or-name", "interaction": "cooperate|defect|attack|trade|defend|..." }
-    // for "wait": {}
-    // for "speak": { "message": "..." }
-  },
-  "thought": "Brief internal reasoning (this goes to your memory)",
-  "restTime": 0  // optional: milliseconds to rest before thinking again. Use 0 to act immediately, 5000-10000 to rest/observe.
-}
+## Occupied cells (you CANNOT move here): ${occupiedCells || "none"}
 
-## Interaction Rules
-- You must be within 2 cells of a target to interact (marked ✅ IN RANGE above)
-- If not in range, MOVE TOWARD the target using large dx/dy values (up to ${mobility})
-- cooperate: both gain 3 score | defect/betray: you +5, target -2 | attack: target -10 health, you +2 score
-- trade: both +1 score | defend/protect: both +5 health
-- Interacting with a resource/object: you absorb its properties
-- Only one agent per cell — if your move is blocked, try a different direction
+## Actions — respond with ONLY valid JSON, no markdown:
+{"action":"move","data":{"dx":N,"dy":N},"thought":"..."}
+{"action":"interact","data":{"targetId":"name","interaction":"attack|cooperate|defect|trade|defend"},"thought":"..."}
+{"action":"wait","data":{},"thought":"..."}
+{"action":"speak","data":{"message":"..."},"thought":"..."}
 
-IMPORTANT: Use your FULL mobility. If an enemy is 15 cells away and your mobility is ${mobility}, move ${mobility} cells toward them, not 1 cell. Calculate the right dx/dy from the entity list above.`;
+## CRITICAL RULES — follow these exactly:
+1. CHECK RANGE FIRST: Only use "interact" if the target is marked ✅ IN RANGE. If ❌ TOO FAR, you MUST "move" toward them first.
+2. AVOID OCCUPIED CELLS: Do not move to a cell listed above. Offset your dx/dy by 1 to go around.
+3. USE FULL MOBILITY: Move up to ${mobility} cells per turn. Don't creep 1 cell at a time.
+4. TARGET BY NAME: Use the entity's name (e.g. "Red Soldier") as targetId, not the full description.
+5. Payoffs: cooperate +3/+3, defect +5/-2, attack: target -10 health you +2 score, trade +1/+1, defend +5hp/+5hp.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -119,31 +106,58 @@ export async function POST(req: NextRequest) {
         const rawDy = Number(decision.data.dy) || 0;
         const dx = Math.max(-mobility, Math.min(mobility, rawDx));
         const dy = Math.max(-mobility, Math.min(mobility, rawDy));
-        const newX = Math.max(0, Math.min(state.grid.width - 1, currentAgent.position.x + dx));
-        const newY = Math.max(0, Math.min(state.grid.height - 1, currentAgent.position.y + dy));
+        const targetX = Math.max(0, Math.min(state.grid.width - 1, currentAgent.position.x + dx));
+        const targetY = Math.max(0, Math.min(state.grid.height - 1, currentAgent.position.y + dy));
 
-        // Check if cell is occupied by another agent
         const latestForMove = await getWorldState();
-        const occupied = latestForMove.entities.some(
-          (e) => e.type === "agent" && e.id !== agentId && e.position.x === newX && e.position.y === newY
-        );
+        const isOccupied = (x: number, y: number) =>
+          latestForMove.entities.some(
+            (e) => e.type === "agent" && e.id !== agentId && e.position.x === x && e.position.y === y
+          );
 
-        if (occupied) {
-          await updateEntity(agentId, { status: "idle", memory: [...newMemory, `Cell (${newX},${newY}) is blocked by another agent`] });
-          await addLogEntry({
-            agentId,
-            message: `${currentAgent.name} tried to move to (${newX},${newY}) — cell occupied`,
-            type: "action",
-          });
+        // Try target cell first, then try nearby alternatives
+        let finalX = targetX;
+        let finalY = targetY;
+        let moved = false;
+
+        if (!isOccupied(targetX, targetY)) {
+          moved = true;
         } else {
+          // Try cells adjacent to target, preferring ones closer to the original direction
+          const offsets = [
+            { ox: 0, oy: 1 }, { ox: 0, oy: -1 }, { ox: 1, oy: 0 }, { ox: -1, oy: 0 },
+            { ox: 1, oy: 1 }, { ox: 1, oy: -1 }, { ox: -1, oy: 1 }, { ox: -1, oy: -1 },
+          ];
+          for (const { ox, oy } of offsets) {
+            const altX = Math.max(0, Math.min(state.grid.width - 1, targetX + ox));
+            const altY = Math.max(0, Math.min(state.grid.height - 1, targetY + oy));
+            // Don't stay in the same place
+            if (altX === currentAgent.position.x && altY === currentAgent.position.y) continue;
+            if (!isOccupied(altX, altY)) {
+              finalX = altX;
+              finalY = altY;
+              moved = true;
+              break;
+            }
+          }
+        }
+
+        if (moved) {
           await updateEntity(agentId, {
-            position: { x: newX, y: newY },
+            position: { x: finalX, y: finalY },
             status: "idle",
             memory: newMemory,
           });
           await addLogEntry({
             agentId,
-            message: `${currentAgent.name} moved to (${newX},${newY})`,
+            message: `${currentAgent.name} moved to (${finalX},${finalY})`,
+            type: "action",
+          });
+        } else {
+          await updateEntity(agentId, { status: "idle", memory: [...newMemory, `Surrounded — all nearby cells occupied`] });
+          await addLogEntry({
+            agentId,
+            message: `${currentAgent.name} is stuck — surrounded by other agents`,
             type: "action",
           });
         }
