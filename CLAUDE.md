@@ -19,3 +19,4 @@
 - Keep the subject line under 72 characters
 - Use the body to explain *what* and *why*, not *how*
 - Do **not** add a `Co-Authored-By` signature to commit messages
+- **Always** ask for explicit confirmation before committing and before pushing — even if auto-permissions are enabled
