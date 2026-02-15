@@ -13,8 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vyuha — Agentic Sandbox",
-  description: "Game theory sandbox where LLM agents compete, cooperate, and fail like humans",
+  title: "Vyuha / व्यूह — Agentic Sandbox",
+  description: "Natural language-controlled multi-agent sandbox. Describe worlds in English, watch autonomous LLM agents think and act on a live 2D grid.",
+  icons: { icon: "/logo.svg" },
+  openGraph: {
+    title: "Vyuha / व्यूह — Agentic Sandbox",
+    description: "Natural language-controlled multi-agent sandbox. Game theory x LLM agents on a live 2D grid.",
+    images: ["/logo.svg"],
+  },
 };
 
 export default function RootLayout({
