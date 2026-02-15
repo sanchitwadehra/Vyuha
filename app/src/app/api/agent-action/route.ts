@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       prompt
     );
 
-    let decision: { action: string; data: Record<string, unknown>; thought: string };
+    let decision: { action: string; data: Record<string, unknown>; thought: string; restTime?: number };
     try {
       const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       decision = JSON.parse(cleaned);
