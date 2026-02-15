@@ -1,5 +1,5 @@
 import { Redis } from "@upstash/redis";
-import { WorldState, StateMutation, LogEntry, Entity } from "./types";
+import { WorldState, StateMutation, LogEntry, Entity, Rule } from "./types";
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -119,6 +119,52 @@ export async function applyMutations(mutations: StateMutation[]): Promise<void> 
         };
         break;
       }
+      case "fill_area": {
+        const { x1, y1, x2, y2, entityType, name, emoji, color, properties: fillProps } = mutation.payload as {
+          x1: number; y1: number; x2: number; y2: number;
+          entityType: string; name: string; emoji: string; color: string;
+          properties?: Record<string, unknown>;
+        };
+        const newEntities: Entity[] = [];
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        for (let x = minX; x <= maxX; x++) {
+          for (let y = minY; y <= maxY; y++) {
+            newEntities.push({
+              id: `${entityType}-${x}-${y}`,
+              type: entityType,
+              name,
+              position: { x, y },
+              emoji,
+              color,
+              properties: fillProps || {},
+            });
+          }
+        }
+        state = {
+          ...state,
+          entities: [...state.entities, ...newEntities],
+        };
+        break;
+      }
+      case "add_structured_rule": {
+        const rule = mutation.payload as unknown as Rule;
+        state = {
+          ...state,
+          structuredRules: [...state.structuredRules, rule],
+        };
+        break;
+      }
+      case "remove_structured_rule": {
+        const ruleId = mutation.payload.id as string;
+        state = {
+          ...state,
+          structuredRules: state.structuredRules.filter((r) => r.id !== ruleId),
+        };
+        break;
+      }
     }
   }
 
@@ -132,6 +178,15 @@ export async function updateEntity(id: string, updates: Partial<Entity>): Promis
     entities: state.entities.map((e) =>
       e.id === id ? { ...e, ...updates } : e
     ),
+  };
+  await saveState(newState);
+}
+
+export async function removeEntity(id: string): Promise<void> {
+  const state = await getWorldState();
+  const newState = {
+    ...state,
+    entities: state.entities.filter((e) => e.id !== id),
   };
   await saveState(newState);
 }

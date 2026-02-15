@@ -102,6 +102,13 @@ export default function Home() {
 
         setWorldState(data.state);
 
+        // Agent chose to rest — sleep without making API calls
+        const restTime = data.restTime || 0;
+        if (restTime > 0) {
+          await new Promise((resolve) => setTimeout(resolve, restTime));
+          continue; // skip the normal delay, go straight to next iteration
+        }
+
         // Respect agent's delay
         const delay = data.delay || 0;
         if (delay > 0) {

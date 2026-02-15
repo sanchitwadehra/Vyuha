@@ -3,13 +3,26 @@ import { callAgentBrain } from "@/lib/llm";
 import {
   getWorldState,
   getEntityById,
-  getNearbyEntities,
   updateEntity,
+  removeEntity,
   addLogEntry,
 } from "@/lib/world-state";
 import { Entity } from "@/lib/types";
+import { processInteraction, resolveTarget, evaluateStructuredRules } from "@/lib/rule-executor";
 
-function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWorldState>>, nearby: Entity[]): string {
+function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWorldState>>): string {
+  const mobility = (agent.properties.mobility as number) || 2;
+  const allOthers = state.entities.filter((e) => e.id !== agent.id);
+
+  // Pre-compute directions to each entity so the LLM knows exact dx/dy to reach them
+  const entityList = allOthers.map((e) => {
+    const dx = e.position.x - agent.position.x;
+    const dy = e.position.y - agent.position.y;
+    const dist = Math.abs(dx) + Math.abs(dy);
+    const canInteract = Math.abs(dx) <= 2 && Math.abs(dy) <= 2;
+    return `- ${e.name || e.id} (${e.type}) at (${e.position.x},${e.position.y}) ${e.emoji} | distance: ${dist} | move dx=${dx > 0 ? "+" : ""}${dx}, dy=${dy > 0 ? "+" : ""}${dy} to reach${canInteract ? " | ✅ IN RANGE to interact" : ""} | properties:${JSON.stringify(e.properties)}`;
+  }).join("\n");
+
   return `You are "${agent.name}" — an agent living in a 2D grid world called Vyuha.
 
 ## Your Identity
@@ -17,34 +30,42 @@ function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWor
 - Position: (${agent.position.x}, ${agent.position.y})
 - Your Rules: ${agent.rules || "No specific rules"}
 - Your Properties: ${JSON.stringify(agent.properties)}
-- Your Status: ${agent.status}
+- Mobility: ${mobility} cells per move
 
 ## Your Memory (recent events you remember)
 ${(agent.memory || []).slice(-10).join("\n") || "No memories yet."}
 
 ## World Info
-- Grid: ${state.grid.width}x${state.grid.height} (valid coordinates: x from 0 to ${state.grid.width - 1}, y from 0 to ${state.grid.height - 1})
-- Your position boundaries: you can move left to x=${Math.max(0, agent.position.x - 1)}, right to x=${Math.min(state.grid.width - 1, agent.position.x + 1)}, up to y=${Math.max(0, agent.position.y - 1)}, down to y=${Math.min(state.grid.height - 1, agent.position.y + 1)}
+- Grid: ${state.grid.width}x${state.grid.height}
 - Global Rules: ${state.globalRules.join("; ") || "None"}
 - Environment: ${JSON.stringify(state.environment)}
 
-## Nearby Entities (within 5 cells)
-${nearby.map((e) => `- ${e.name || e.id} (${e.type}) at (${e.position.x},${e.position.y}) ${e.emoji} properties:${JSON.stringify(e.properties)}`).join("\n") || "Nothing nearby."}
+## All Entities on the Grid
+${entityList || "Nothing on the grid."}
 
 ## What You Can Do
 Respond with ONLY valid JSON — no markdown, no code fences:
 {
   "action": "move" | "interact" | "wait" | "speak",
   "data": {
-    // for "move": { "dx": -1|0|1, "dy": -1|0|1 }
-    // for "interact": { "targetId": "...", "interaction": "cooperate|defect|attack|trade|..." }
+    // for "move": { "dx": -${mobility} to ${mobility}, "dy": -${mobility} to ${mobility} } — USE LARGE VALUES to cover distance fast!
+    // for "interact": { "targetId": "entity-id-or-name", "interaction": "cooperate|defect|attack|trade|defend|..." }
     // for "wait": {}
     // for "speak": { "message": "..." }
   },
-  "thought": "Brief internal reasoning (this goes to your memory)"
+  "thought": "Brief internal reasoning (this goes to your memory)",
+  "restTime": 0  // optional: milliseconds to rest before thinking again. Use 0 to act immediately, 5000-10000 to rest/observe.
 }
 
-Think about your rules, the global rules, your surroundings, and your memory. Then decide your action.`;
+## Interaction Rules
+- You must be within 2 cells of a target to interact (marked ✅ IN RANGE above)
+- If not in range, MOVE TOWARD the target using large dx/dy values (up to ${mobility})
+- cooperate: both gain 3 score | defect/betray: you +5, target -2 | attack: target -10 health, you +2 score
+- trade: both +1 score | defend/protect: both +5 health
+- Interacting with a resource/object: you absorb its properties
+- Only one agent per cell — if your move is blocked, try a different direction
+
+IMPORTANT: Use your FULL mobility. If an enemy is 15 cells away and your mobility is ${mobility}, move ${mobility} cells toward them, not 1 cell. Calculate the right dx/dy from the entity list above.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -61,8 +82,7 @@ export async function POST(req: NextRequest) {
     // Mark as thinking
     await updateEntity(agentId, { status: "thinking" });
 
-    const nearby = await getNearbyEntities(agent.position, 5);
-    const prompt = buildAgentPrompt(agent, state, nearby);
+    const prompt = buildAgentPrompt(agent, state);
 
     const raw = await callAgentBrain(
       "You are an autonomous agent in a simulation. Respond with ONLY valid JSON.",
@@ -89,31 +109,78 @@ export async function POST(req: NextRequest) {
 
     switch (decision.action) {
       case "move": {
-        const dx = Number(decision.data.dx) || 0;
-        const dy = Number(decision.data.dy) || 0;
+        const mobility = (currentAgent.properties.mobility as number) || 2;
+        const rawDx = Number(decision.data.dx) || 0;
+        const rawDy = Number(decision.data.dy) || 0;
+        const dx = Math.max(-mobility, Math.min(mobility, rawDx));
+        const dy = Math.max(-mobility, Math.min(mobility, rawDy));
         const newX = Math.max(0, Math.min(state.grid.width - 1, currentAgent.position.x + dx));
         const newY = Math.max(0, Math.min(state.grid.height - 1, currentAgent.position.y + dy));
-        await updateEntity(agentId, {
-          position: { x: newX, y: newY },
-          status: "idle",
-          memory: newMemory,
-        });
-        await addLogEntry({
-          agentId,
-          message: `${currentAgent.name} moved to (${newX},${newY})`,
-          type: "action",
-        });
+
+        // Check if cell is occupied by another agent
+        const latestForMove = await getWorldState();
+        const occupied = latestForMove.entities.some(
+          (e) => e.type === "agent" && e.id !== agentId && e.position.x === newX && e.position.y === newY
+        );
+
+        if (occupied) {
+          await updateEntity(agentId, { status: "idle", memory: [...newMemory, `Cell (${newX},${newY}) is blocked by another agent`] });
+          await addLogEntry({
+            agentId,
+            message: `${currentAgent.name} tried to move to (${newX},${newY}) — cell occupied`,
+            type: "action",
+          });
+        } else {
+          await updateEntity(agentId, {
+            position: { x: newX, y: newY },
+            status: "idle",
+            memory: newMemory,
+          });
+          await addLogEntry({
+            agentId,
+            message: `${currentAgent.name} moved to (${newX},${newY})`,
+            type: "action",
+          });
+        }
         break;
       }
       case "interact": {
-        const targetId = decision.data.targetId as string;
+        const targetRef = decision.data.targetId as string;
         const interaction = decision.data.interaction as string;
-        await updateEntity(agentId, { status: "idle", memory: newMemory });
-        await addLogEntry({
-          agentId,
-          message: `${currentAgent.name} → ${interaction} with ${targetId}`,
-          type: "action",
+        const latestState = await getWorldState();
+        const target = resolveTarget(latestState, targetRef);
+
+        if (!target) {
+          await updateEntity(agentId, { status: "idle", memory: [...newMemory, `Could not find ${targetRef}`] });
+          await addLogEntry({
+            agentId,
+            message: `${currentAgent.name} tried to ${interaction} with ${targetRef} — target not found`,
+            type: "action",
+          });
+          break;
+        }
+
+        const result = processInteraction(currentAgent, target, interaction);
+
+        if (!result.valid) {
+          await updateEntity(agentId, { status: "idle", memory: [...newMemory, result.logMessage] });
+          await addLogEntry({ agentId, message: result.logMessage, type: "action" });
+          break;
+        }
+
+        // Apply updates to agent
+        await updateEntity(agentId, {
+          status: "idle",
+          memory: newMemory,
+          ...result.agentUpdates,
         });
+
+        // Apply updates to target if any
+        if (result.targetUpdates) {
+          await updateEntity(target.id, result.targetUpdates);
+        }
+
+        await addLogEntry({ agentId, message: result.logMessage, type: "action" });
         break;
       }
       case "speak": {
@@ -138,13 +205,43 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Apply delay if agent has one
+    // Post-action: evaluate structured rules
+    const postState = await getWorldState();
+    const ruleEffects = evaluateStructuredRules(postState);
+
+    for (const effect of ruleEffects) {
+      if (effect.effect === "eliminate") {
+        await removeEntity(effect.entityId);
+        await addLogEntry({
+          message: `${effect.entityName} eliminated! (${effect.rule.description})`,
+          type: "rule-violation",
+        });
+      } else if (effect.effect === "penalize" && effect.penaltyApplied) {
+        const entity = await getEntityById(effect.entityId);
+        if (entity) {
+          const currentVal = (entity.properties[effect.penaltyApplied.property] as number) || 0;
+          await updateEntity(effect.entityId, {
+            properties: {
+              ...entity.properties,
+              [effect.penaltyApplied.property]: currentVal - effect.penaltyApplied.amount,
+            },
+          });
+          await addLogEntry({
+            message: `${effect.entityName} penalized: -${effect.penaltyApplied.amount} ${effect.penaltyApplied.property} (${effect.rule.description})`,
+            type: "rule-violation",
+          });
+        }
+      }
+    }
+
     const delay = currentAgent.delay || 0;
+    const restTime = Number(decision.restTime) || 0;
 
     return NextResponse.json({
       agentId,
       decision,
       delay,
+      restTime,
       state: await getWorldState(),
     });
   } catch (error) {

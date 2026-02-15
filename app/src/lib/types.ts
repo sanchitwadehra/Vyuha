@@ -17,24 +17,25 @@ export interface Entity {
   properties: Record<string, unknown>;
 }
 
-export interface HardRule {
+export interface StructuredRule {
   id: string;
-  type: "hard";
+  type: "hard" | "soft";
   description: string;
-  condition: string;
-  action: "block_move" | "block_action" | "destroy";
-  penalty?: { [key: string]: number };
+  // What triggers this rule
+  check: {
+    property: string;       // entity property to check, e.g. "health", "score"
+    operator: "<=" | ">=" | "<" | ">" | "==" | "!=";
+    value: number;
+  };
+  // What happens when triggered
+  effect: "eliminate" | "penalize";
+  // For penalize: which property loses how much
+  penalty?: { property: string; amount: number };
+  // Which entity types this applies to ("agent", "resource", or "all")
+  appliesTo: string;
 }
 
-export interface SoftRule {
-  id: string;
-  type: "soft";
-  description: string;
-  condition: string;
-  penalty: { [key: string]: number };
-}
-
-export type Rule = HardRule | SoftRule;
+export type Rule = StructuredRule;
 
 export interface WorldState {
   grid: { width: number; height: number };
@@ -71,7 +72,7 @@ export interface GodModeResponse {
 }
 
 export interface StateMutation {
-  type: "add_entity" | "remove_entity" | "modify_entity" | "add_rule" | "remove_rule" | "modify_grid" | "modify_environment" | "add_global_rule" | "remove_global_rule";
+  type: "add_entity" | "remove_entity" | "modify_entity" | "add_rule" | "remove_rule" | "modify_grid" | "modify_environment" | "add_global_rule" | "remove_global_rule" | "add_structured_rule" | "remove_structured_rule" | "fill_area";
   payload: Record<string, unknown>;
 }
 
