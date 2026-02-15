@@ -11,10 +11,12 @@ interface InteractionResult {
  * Find a target entity by ID or name (agents often refer to targets by name)
  */
 export function resolveTarget(state: WorldState, targetRef: string): Entity | undefined {
+  const ref = targetRef.toLowerCase();
   return (
     state.entities.find((e) => e.id === targetRef) ||
-    state.entities.find((e) => e.name.toLowerCase() === targetRef.toLowerCase()) ||
-    state.entities.find((e) => e.name.toLowerCase().includes(targetRef.toLowerCase()))
+    state.entities.find((e) => e.name.toLowerCase() === ref) ||
+    state.entities.find((e) => e.name.toLowerCase().includes(ref)) ||
+    state.entities.find((e) => ref.includes(e.name.toLowerCase()))
   );
 }
 
@@ -36,6 +38,16 @@ export function processInteraction(
   target: Entity,
   interactionType: string,
 ): InteractionResult {
+  // Terrain is not interactable
+  const terrainTypes = ["obstacle", "zone", "terrain", "wall", "island"];
+  if (terrainTypes.includes(target.type)) {
+    return {
+      agentUpdates: {},
+      logMessage: `${agent.name} tried to interact with ${target.name} — it's terrain, not interactable`,
+      valid: false,
+    };
+  }
+
   // Proximity check
   if (!isNearby(agent, target)) {
     return {

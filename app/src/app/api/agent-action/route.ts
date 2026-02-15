@@ -12,15 +12,17 @@ import { processInteraction, resolveTarget, evaluateStructuredRules } from "@/li
 
 function buildAgentPrompt(agent: Entity, state: Awaited<ReturnType<typeof getWorldState>>): string {
   const mobility = (agent.properties.mobility as number) || 2;
+  const terrainTypes = ["obstacle", "zone", "terrain", "wall", "island"];
   const allOthers = state.entities.filter((e) => e.id !== agent.id);
+  const targets = allOthers.filter((e) => !terrainTypes.includes(e.type));
 
-  // Pre-compute directions to each entity so the LLM knows exact dx/dy to reach them
-  const entityList = allOthers.map((e) => {
+  // Pre-compute directions to interactable entities (agents + resources)
+  const targetList = targets.map((e) => {
     const dx = e.position.x - agent.position.x;
     const dy = e.position.y - agent.position.y;
     const dist = Math.abs(dx) + Math.abs(dy);
     const canInteract = Math.abs(dx) <= 2 && Math.abs(dy) <= 2;
-    return `- ${e.name || e.id} (${e.type}) at (${e.position.x},${e.position.y}) ${e.emoji} | distance: ${dist} | move dx=${dx > 0 ? "+" : ""}${dx}, dy=${dy > 0 ? "+" : ""}${dy} to reach${canInteract ? " | ✅ IN RANGE to interact" : ""} | properties:${JSON.stringify(e.properties)}`;
+    return `- ${e.name || e.id} (${e.type}) at (${e.position.x},${e.position.y}) ${e.emoji} | distance: ${dist} | move dx=${dx > 0 ? "+" : ""}${dx}, dy=${dy > 0 ? "+" : ""}${dy} to reach${canInteract ? " | ✅ IN RANGE" : ""} | properties:${JSON.stringify(e.properties)}`;
   }).join("\n");
 
   return `You are "${agent.name}" — an agent living in a 2D grid world called Vyuha.
@@ -40,8 +42,11 @@ ${(agent.memory || []).slice(-10).join("\n") || "No memories yet."}
 - Global Rules: ${state.globalRules.join("; ") || "None"}
 - Environment: ${JSON.stringify(state.environment)}
 
-## All Entities on the Grid
-${entityList || "Nothing on the grid."}
+## Agents & Resources (you can interact with these)
+${targetList || "Nothing to interact with."}
+
+## Terrain (not interactable, just landscape)
+${allOthers.filter((e) => terrainTypes.includes(e.type)).length} terrain tiles on the grid.
 
 ## What You Can Do
 Respond with ONLY valid JSON — no markdown, no code fences:
