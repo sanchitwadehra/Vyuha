@@ -163,13 +163,21 @@ export default function Grid({ width, height, entities, environment }: GridProps
                 onMouseEnter={() => setHoveredCell(key)}
                 onMouseLeave={() => setHoveredCell(null)}
               >
-                {topEntity && (
-                  <span className="select-none">{topEntity.emoji}</span>
+                {cellEntities.length === 1 && (
+                  <span className="select-none">{cellEntities[0].emoji}</span>
                 )}
                 {cellEntities.length > 1 && (
-                  <span className="absolute bottom-0 right-0.5 text-[8px] text-zinc-400">
-                    +{cellEntities.length - 1}
-                  </span>
+                  <div
+                    className="flex flex-wrap items-center justify-center gap-0 select-none"
+                    style={{ fontSize: Math.max(cellSize * 0.35 / Math.ceil(Math.sqrt(cellEntities.length)), 8) }}
+                  >
+                    {cellEntities.slice(0, 4).map((e) => (
+                      <span key={e.id} className="leading-none">{e.emoji}</span>
+                    ))}
+                    {cellEntities.length > 4 && (
+                      <span className="text-[6px] text-zinc-400">+{cellEntities.length - 4}</span>
+                    )}
+                  </div>
                 )}
                 {isThinking && (
                   <span className="absolute top-0 right-0.5 text-[8px]">
