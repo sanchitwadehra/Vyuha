@@ -4,6 +4,11 @@
 
 - Always read `docs/scope.md` before starting any task to understand the current project scope and requirements
 
+## External Context
+
+- `/Users/sanchit/Documents/Context` — extra context files for building discussions
+- `/Users/sanchit/Documents/screenshots` — screenshots for reference
+
 ## Git Commit Conventions
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) format: `type(scope): description`
